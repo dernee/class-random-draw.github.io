@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>星愿抽选 · 随机抽取名单</title>
+<style>
+/* ============================================================
+   1. 全局基础样式 & 变量
+   ============================================================ */
+:root{
+  --gold:        #e8c884;   /* 主金色 */
+  --gold-light:  #fdf0c8;   /* 高亮金 */
+  --gold-deep:   #b8913f;   /* 深金描边 */
+  --ink:         #0a0d1a;   /* 深空底色 */
+  --ink-2:       #131a2e;   /* 卡片底色 */
+  --ink-3:       #1d2540;   /* 次级面板 */
+  --text:        #e9e2d0;   /* 正文米白 */
+  --text-dim:    #9aa0b8;   /* 次要文字 */
+  --purple:      #6f5ea8;   /* 星空紫 */
+  --blue:        #3f6ea8;   /* 星空蓝 */
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+html,body{ height:100%; }
+
+body{
+  font-family: "Segoe UI","PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif;
+  background: var(--ink);
+  color: var(--text);
+  overflow-x:hidden;
+  min-height:100vh;
+  /* 深空渐变 + 多层星云光晕 */
+  background-image:
+    radial-gradient(ellipse 80% 50% at 15% 0%,  rgba(111,94,168,.35), transparent 70%),
+    radial-gradient(ellipse 70% 60% at 90% 15%, rgba(63,110,168,.30), transparent 70%),
+    radial-gradient(ellipse 90% 60% at 50% 110%,rgba(232,200,132,.12), transparent 70%),
+    linear-gradient(180deg,#070a14 0%, #0a0d1a 45%, #060810 100%);
+  background-attachment: fixed;
+}
+
+/* ---- 星空：用 CSS 生成的点点繁星（两层不同密度/速度） ---- */
+.stars, .stars2, .stars3{
+  position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-repeat:repeat;
+}
+.stars{ /* 小星点 */
+  background-image:
+    radial-gradient(1px 1px at 20px 30px,  rgba(255,255,255,.85), transparent),
+    radial-gradient(1px 1px at 120px 90px, rgba(255,255,255,.6),  transparent),
+    radial-gradient(1px 1px at 200px 40px, rgba(255,240,200,.7),  transparent),
+    radial-gradient(1px 1px at 60px 160px, rgba(255,255,255,.5),  transparent),
+    radial-gradient(1px 1px at 260px 130px,rgba(200,220,255,.65), transparent);
+  background-size: 300px 300px;
+  animation: twinkle 5s ease-in-out infinite alternate;
+}
+.stars2{ /* 稍大星点 + 金色微光 */
+  background-image:
+    radial-gradient(1.6px 1.6px at 80px 60px, rgba(253,240,200,.9), transparent),
+    radial-gradient(1.4px 1.4px at 230px 200px,rgba(255,255,255,.7),transparent),
+    radial-gradient(1.8px 1.8px at 340px 100px,rgba(232,200,132,.85),transparent),
+    radial-gradient(1.2px 1.2px at 150px 300px,rgba(190,210,255,.7),transparent);
+  background-size: 420px 420px;
+  animation: twinkle 7s ease-in-out infinite alternate-reverse;
+}
+.stars3{ /* 缓慢漂浮的星尘 */
+  background-image:
+    radial-gradient(2px 2px at 400px 220px, rgba(232,200,132,.5), transparent),
+    radial-gradient(2px 2px at 100px 400px, rgba(160,180,255,.45),transparent),
+    radial-gradient(2.2px 2.2px at 520px 480px, rgba(253,240,200,.4), transparent);
+  background-size: 640px 640px;
+  animation: drift 24s linear infinite;
+}
+@keyframes twinkle{ from{opacity:.45} to{opacity:1} }
+@keyframes drift{
+  from{ background-position: 0 0; }
+  to  { background-position: 640px 640px; }
+}
+
+/* 漂浮的金色微光粒子（由 JS 动态生成，这里定义样式） */
+.spark{
+  position:fixed; z-index:1; pointer-events:none;
+  border-radius:50%;
+  background: radial-gradient(circle, var(--gold-light) 0%, rgba(232,200,132,.55) 40%, transparent 70%);
+  animation: floatUp linear infinite;
+}
+@keyframes floatUp{
+  0%  { transform: translateY(0) scale(.6);   opacity:0; }
+  15% { opacity:.9; }
+  85% { opacity:.7; }
+  100%{ transform: translateY(-120vh) scale(1.15); opacity:0; }
+}
+
+/* ============================================================
+   2. 页面布局
+   ============================================================ */
+.wrap{
+  position:relative; z-index:2;
+  max-width:1360px; margin:0 auto;
+  padding:28px 26px 60px;
+}
+
+/* ---- 顶部标题 ---- */
+.header{ text-align:center; margin-bottom:22px; }
+.title{
+  font-size:34px; font-weight:700; letter-spacing:.42em;
+  color: var(--gold-light);
+  text-shadow: 0 0 18px rgba(232,200,132,.55), 0 0 42px rgba(232,200,132,.28);
+  font-family:"Songti SC","STSong","SimSun",serif;
+}
+.title .dot{ color:var(--gold); }
+.subtitle{
+  margin-top:10px; font-size:13px; letter-spacing:.32em;
+  color: var(--text-dim); text-transform:uppercase;
+}
+.divider{
+  margin:18px auto 0; width:min(560px,80%); height:1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  position:relative; opacity:.75;
+}
+.divider::after{
+  content:""; position:absolute; left:50%; top:50%;
+  width:6px; height:6px; margin:-3px 0 0 -3px;
+  background: var(--gold-light); transform: rotate(45deg);
+  box-shadow: 0 0 10px var(--gold);
+}
+
+/* ---- 主网格：左(输入) / 中(抽卡) / 右(记录) ---- */
+.layout{
+  display:grid;
+  grid-template-columns: 300px 1fr 300px;
+  gap:22px; margin-top:26px;
+  align-items:start;
+}
+
+/* ---- 通用面板卡片 ---- */
+.panel{
+  background: linear-gradient(160deg, rgba(29,37,64,.92), rgba(13,17,32,.94));
+  border:1px solid rgba(232,200,132,.28);
+  border-radius:16px;
+  padding:18px 16px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.55), inset 0 0 24px rgba(111,94,168,.10);
+  backdrop-filter: blur(6px);
+}
+.panel-title{
+  font-size:14px; letter-spacing:.2em; color:var(--gold);
+  display:flex; align-items:center; gap:8px; margin-bottom:14px;
+  font-weight:600;
+}
+.panel-title::before{
+  content:""; width:3px; height:14px; border-radius:2px;
+  background:linear-gradient(180deg, var(--gold-light), var(--gold-deep));
+  box-shadow:0 0 8px rgba(232,200,132,.7);
+}
+.panel-title .count{
+  margin-left:auto; font-size:12px; letter-spacing:0;
+  color:var(--text-dim); font-weight:400;
+}
+
+/* ---- 名单输入区 ---- */
+textarea{
+  width:100%; height:280px; resize:vertical;
+  background: rgba(6,9,18,.85);
+  border:1px solid rgba(232,200,132,.22);
+  border-radius:10px; padding:10px 12px;
+  color:var(--text); font-size:13px; line-height:1.75;
+  font-family:inherit; outline:none;
+  transition:border-color .25s, box-shadow .25s;
+}
+textarea:focus{
+  border-color:rgba(232,200,132,.6);
+  box-shadow:0 0 0 3px rgba(232,200,132,.10);
+}
+textarea::placeholder{ color:#5b6280; }
+
+.hint{ margin-top:8px; font-size:11.5px; color:#6f7794; line-height:1.7; }
+
+/* ---- 按钮 ---- */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  border:none; cursor:pointer; border-radius:999px;
+  font-family:inherit; font-size:13px; font-weight:600;
+  letter-spacing:.08em; color:#231a06;
+  background: linear-gradient(180deg,#fdf0c8,#e8c884 55%,#c9a35c);
+  padding:11px 20px;
+  box-shadow:0 4px 16px rgba(232,200,132,.30), inset 0 1px 0 rgba(255,255,255,.7);
+  transition:transform .16s, box-shadow .22s, filter .22s;
+  position:relative; overflow:hidden;
+}
+.btn:hover{ transform:translateY(-2px); box-shadow:0 8px 24px rgba(232,200,132,.46); filter:brightness(1.06); }
+.btn:active{ transform:translateY(0); }
+.btn:disabled{ opacity:.42; cursor:not-allowed; transform:none; filter:grayscale(.4); }
+.btn.ghost{
+  background: transparent; color:var(--gold-light);
+  border:1px solid rgba(232,200,132,.5); box-shadow:none;
+}
+.btn.ghost:hover{ background:rgba(232,200,132,.10); box-shadow:0 0 16px rgba(232,200,132,.2); }
+.btn.small{ padding:8px 14px; font-size:12px; }
+.btn.block{ width:100%; }
+
+/* ---- 模式开关（分段控件） ---- */
+.seg{
+  display:flex; gap:6px; padding:4px; margin-bottom:12px;
+  background:rgba(6,9,18,.75);
+  border:1px solid rgba(232,200,132,.18);
+  border-radius:12px;
+}
+.seg button{
+  flex:1; border:none; cursor:pointer; padding:9px 4px;
+  background:transparent; color:var(--text-dim);
+  border-radius:9px; font-family:inherit; font-size:12.5px; font-weight:600;
+  letter-spacing:.06em; transition:all .22s;
+}
+.seg button:hover{ color:var(--gold-light); }
+.seg button.active{
+  color:#231a06;
+  background:linear-gradient(180deg,#fdf0c8,#e8c884 60%,#c9a35c);
+  box-shadow:0 3px 12px rgba(232,200,132,.35);
+}
+.seg-label{ font-size:11.5px; color:#6f7794; margin:2px 0 6px; letter-spacing:.1em; }
+
+/* ---- 中央抽卡台 ---- */
+.stage{
+  display:flex; flex-direction:column; align-items:center;
+  min-height:560px; padding:24px 20px;
+}
+.cards-layer{
+  flex:1; width:100%;
+  display:flex; flex-wrap:wrap; gap:18px;
+  align-items:center; justify-content:center;
+  align-content:center;
+  perspective: 1400px;
+  min-height:340px;
+}
+
+/* 空状态提示 */
+.empty-tip{
+  text-align:center; color:#5f688a; letter-spacing:.28em;
+  font-size:14px; user-select:none;
+}
+.empty-tip .big{
+  display:block; font-size:54px; margin-bottom:14px; opacity:.5;
+  filter: drop-shadow(0 0 18px rgba(232,200,132,.5));
+  animation: pulse 3s ease-in-out infinite;
+}
+@keyframes pulse{ 0%,100%{transform:scale(1);opacity:.45} 50%{transform:scale(1.08);opacity:.75} }
+
+/* ---- 卡片：翻转容器 ---- */
+.card-holder{
+  width:150px; height:212px;
+  perspective: 900px;
+  animation: cardAppear .5s cubic-bezier(.22,1.4,.4,1) both;
+  position:relative;
+}
+@keyframes cardAppear{
+  from{ opacity:0; transform: scale(.5) translateY(26px); }
+  to  { opacity:1; transform: scale(1) translateY(0); }
+}
+.card-inner{
+  position:relative; width:100%; height:100%;
+  transform-style: preserve-3d;
+  transition: transform .95s cubic-bezier(.5,.05,.25,1.05);
+}
+.card-holder.flipped .card-inner{ transform: rotateY(180deg); }
+
+.card-face{
+  position:absolute; inset:0;
+  backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  border-radius:14px; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+
+/* 卡背：星轨纹样 */
+.card-back{
+  background:
+    radial-gradient(circle at 50% 42%, rgba(232,200,132,.28), transparent 62%),
+    linear-gradient(160deg,#1b2340,#0c1122 70%);
+  border:1.5px solid rgba(232,200,132,.55);
+  box-shadow: inset 0 0 26px rgba(111,94,168,.4), 0 8px 26px rgba(0,0,0,.6);
+}
+.card-back::before{ /* 中央菱形符文 */
+  content:"✦";
+  font-size:44px; color:var(--gold-light);
+  text-shadow:0 0 18px var(--gold),0 0 36px rgba(232,200,132,.6);
+  animation: spin 6s linear infinite;
+}
+@keyframes spin{ from{transform:rotate(0)} to{transform:rotate(360deg)} }
+.card-back::after{ /* 外圈光环 */
+  content:""; position:absolute; inset:12px;
+  border:1px solid rgba(232,200,132,.32); border-radius:9px;
+}
+
+/* 卡面：结果 */
+.card-front{
+  transform: rotateY(180deg);
+  background: linear-gradient(170deg,#fffdf6,#f6ecd4 45%,#e6d3ab);
+  border:2px solid var(--gold);
+  box-shadow: 0 0 26px rgba(232,200,132,.55), inset 0 0 22px rgba(255,255,255,.7);
+  padding:12px 8px;
+}
+.card-front .rank{
+  position:absolute; top:0; left:0;
+  font-size:10px; letter-spacing:.16em; font-weight:700;
+  color:#fff; padding:3px 12px 3px 8px;
+  background:linear-gradient(90deg,var(--gold-deep),var(--gold));
+  border-bottom-right-radius:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+.card-front .avatar{
+  width:58px; height:58px; border-radius:50%;
+  background: radial-gradient(circle at 35% 30%, #fff8e4, #e8c884 45%, #b8913f);
+  display:flex; align-items:center; justify-content:center;
+  font-size:24px; font-weight:700; color:#5b420f;
+  border:2px solid #fff;
+  box-shadow:0 4px 14px rgba(184,145,63,.6), 0 0 0 3px rgba(232,200,132,.35);
+  margin-bottom:12px;
+}
+.card-front .name{
+  font-size:17px; font-weight:700; color:#3d2f0c;
+  text-align:center; line-height:1.3; word-break:break-all;
+  font-family:"Songti SC","STSong",serif;
+  max-width:100%; padding:0 4px;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.card-front .lv{
+  margin-top:9px; font-size:10px; letter-spacing:.2em; color:#8a7440;
+}
+/* 卡面四角装饰 */
+.card-front .corner{
+  position:absolute; width:12px; height:12px;
+  border:2px solid var(--gold-deep); opacity:.75;
+}
+.card-front .c1{ top:5px; left:5px;  border-right:0; border-bottom:0; border-radius:4px 0 0 0; }
+.card-front .c2{ top:5px; right:5px; border-left:0;  border-bottom:0; border-radius:0 4px 0 0; }
+.card-front .c3{ bottom:5px; left:5px;  border-right:0; border-top:0; border-radius:0 0 0 4px; }
+.card-front .c4{ bottom:5px; right:5px; border-left:0;  border-top:0; border-radius:0 0 4px 0; }
+
+/* 高稀有度额外光效（抽中时随机赋予） */
+.card-holder.legendary .card-front{
+  box-shadow: 0 0 40px rgba(255,222,120,.95), 0 0 80px rgba(232,200,132,.6), inset 0 0 26px rgba(255,255,255,.85);
+}
+.card-holder.legendary::after{
+  content:""; position:absolute; inset:-14px; border-radius:20px;
+  background: radial-gradient(circle, rgba(255,222,120,.42), transparent 68%);
+  pointer-events:none; z-index:-1;
+  animation: haloPulse 2s ease-in-out infinite;
+}
+@keyframes haloPulse{ 0%,100%{opacity:.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.07)} }
+
+/* ---- 操作区（按钮组） ---- */
+.controls{
+  margin-top:22px; display:flex; gap:14px; align-items:center;
+  flex-wrap:wrap; justify-content:center;
+}
+.btn-draw{
+  font-size:17px; padding:15px 46px; letter-spacing:.24em;
+  font-family:"Songti SC","STSong",serif; font-weight:700;
+}
+.btn-draw::after{ /* 掠过光效 */
+  content:""; position:absolute; top:0; left:-120%; width:60%; height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.85),transparent);
+  transform:skewX(-22deg);
+  animation: sheen 3.2s ease-in-out infinite;
+}
+@keyframes sheen{ 0%{left:-120%} 55%{left:130%} 100%{left:130%} }
+
+.status-line{
+  margin-top:16px; font-size:12px; color:var(--text-dim);
+  letter-spacing:.1em; text-align:center; min-height:18px;
+}
+.status-line b{ color:var(--gold-light); }
+
+/* ---- 右侧记录面板 ---- */
+.record-list{
+  max-height:400px; overflow-y:auto; padding-right:4px;
+  display:flex; flex-direction:column; gap:8px;
+}
+.record-list::-webkit-scrollbar{ width:6px; }
+.record-list::-webkit-scrollbar-thumb{
+  background:rgba(232,200,132,.35); border-radius:3px;
+}
+.record-list::-webkit-scrollbar-track{ background:rgba(255,255,255,.04); }
+
+.record-item{
+  display:flex; align-items:center; gap:10px;
+  background:rgba(6,9,18,.7);
+  border:1px solid rgba(232,200,132,.16);
+  border-left:3px solid var(--gold);
+  border-radius:9px; padding:9px 11px;
+  animation: slideIn .35s ease both;
+  font-size:13px;
+}
+@keyframes slideIn{ from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:none} }
+.record-item .idx{
+  font-size:10px; color:var(--gold); font-weight:700;
+  min-width:22px; letter-spacing:.04em;
+}
+.record-item .nm{ flex:1; color:var(--text); word-break:break-all; }
+.record-item .tm{ font-size:10px; color:#5f688a; }
+.record-empty{ color:#5f688a; font-size:12px; text-align:center; padding:26px 0; letter-spacing:.14em; }
+
+.panel-actions{ display:flex; gap:8px; margin-top:12px; }
+
+/* ---- 底部说明 ---- */
+.footnote{
+  margin-top:34px; text-align:center; font-size:11.5px;
+  color:#4f5674; letter-spacing:.14em;
+}
+
+/* ---- 响应式（小屏时改为单列） ---- */
+@media (max-width:1120px){
+  .layout{ grid-template-columns:1fr; }
+  textarea{ height:160px; }
+  .record-list{ max-height:260px; }
+}
+</style>
+</head>
+<body>
+
+<!-- 星空背景层 -->
+<div class="stars"></div>
+<div class="stars2"></div>
+<div class="stars3"></div>
+
+<div class="wrap">
+
+  <!-- ===================== 顶部标题 ===================== -->
+  <header class="header">
+    <h1 class="title">星愿抽选<span class="dot"> ✦ </span>WISH</h1>
+    <p class="subtitle">Random Name Summon</p>
+    <div class="divider"></div>
+  </header>
+
+  <!-- ===================== 主体三栏 ===================== -->
+  <div class="layout">
+
+    <!-- ---------- 左：名单输入 ---------- -->
+    <section class="panel">
+      <div class="panel-title">名单录入 <span class="count" id="poolCount">0 人</span></div>
+      <textarea id="nameInput" placeholder="每行一个名字，例如：&#10;张三&#10;李四&#10;王五&#10;……"></textarea>
+      <p class="hint">
+        支持空行、前后空格自动忽略；<br>
+        也支持用逗号 / 顿号分隔（会自动拆分）。
+      </p>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn ghost small block" id="btnApply">应用名单</button>
+        <button class="btn ghost small block" id="btnClearInput">清空输入</button>
+      </div>
+    </section>
+
+    <!-- ---------- 中：抽卡台 ---------- -->
+    <section class="panel stage">
+      <!-- 抽取人数模式 -->
+      <div style="width:100%;max-width:420px;">
+        <div class="seg-label">抽取数量</div>
+        <div class="seg" id="segCount">
+          <button data-mode="single" class="active">单抽 ×1</button>
+          <button data-mode="ten">十连 ×10</button>
+        </div>
+        <!-- 抽取规则模式 -->
+        <div class="seg-label">抽取规则</div>
+        <div class="seg" id="segRule">
+          <button data-rule="repeat" class="active">可重复抽取</button>
+          <button data-rule="unique">不重复抽取</button>
+        </div>
+      </div>
+
+      <!-- 卡片展示层 -->
+      <div class="cards-layer" id="cardsLayer">
+        <div class="empty-tip">
+          <span class="big">✦</span>
+          点击下方按钮，开启星愿
+        </div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="controls">
+        <button class="btn btn-draw" id="btnDraw">开始抽取</button>
+        <button class="btn ghost" id="btnReset">重置记录</button>
+      </div>
+
+      <!-- 状态提示 -->
+      <div class="status-line" id="statusLine"></div>
+    </section>
+
+    <!-- ---------- 右：抽取记录 ---------- -->
+    <section class="panel">
+      <div class="panel-title">抽取记录 <span class="count" id="recordCount">0 条</span></div>
+      <div class="record-list" id="recordList">
+        <div class="record-empty">暂无记录</div>
+      </div>
+      <div class="panel-actions">
+        <button class="btn ghost small block" id="btnClearRecord">清空记录</button>
+      </div>
+    </section>
+
+  </div>
+
+  <p class="footnote">✦ 本页面为纯前端示例，风格向祈愿界面致敬，不包含任何官方素材 ✦</p>
+</div>
+
+<script>
+/* ============================================================
+   全局状态
+   ============================================================ */
+const state = {
+  pool:        [],   // 全部名单（数组）
+  drawn:       [],   // 本轮已抽中的人（用于"不重复"模式）
+  countMode:   'single', // 'single' | 'ten'
+  ruleMode:    'repeat', // 'repeat' | 'unique'
+  drawing:     false,    // 动画进行中，防止重复点击
+  records:     []        // 抽取记录 [{name, time}]
+};
+
+/* 常用 DOM 引用 */
+const $ = id => document.getElementById(id);
+const nameInput   = $('nameInput');
+const poolCount   = $('poolCount');
+const cardsLayer  = $('cardsLayer');
+const statusLine  = $('statusLine');
+const recordList  = $('recordList');
+const recordCount = $('recordCount');
+const btnDraw     = $('btnDraw');
+const btnReset    = $('btnReset');
+
+/* ============================================================
+   1. 名单解析：把多行文本解析成干净的姓名数组
+   - 按换行拆分
+   - 每行再按 逗号/顿号/中文逗号 拆分
+   - 去首尾空格、去空项
+   ============================================================ */
+function parseNames(text){
+  return text
+    .split(/\r?\n/)                       // 先按行拆
+    .flatMap(line => line.split(/[,，、；;]+/)) // 再按分隔符拆
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+}
+
+/* 把 textarea 内容载入 state.pool，并刷新计数 */
+function applyPool(){
+  state.pool = parseNames(nameInput.value);
+  poolCount.textContent = state.pool.length + ' 人';
+  // 名单变化后，清空"已抽中"避免脏数据
+  state.drawn = [];
+  updateStatus();
+}
+
+/* ============================================================
+   2. 抽取核心逻辑
+   - 返回一个名字数组（长度为 1 或 10）
+   - 不重复模式下会先过滤掉已抽中的人
+   ============================================================ */
+function pickNames(n){
+
+  // 候选池
+  let candidates = state.pool;
+  if(state.ruleMode === 'unique'){
+    candidates = state.pool.filter(name => !state.drawn.includes(name));
+  }
+
+  // 候选不足：返回 null 表示无法抽取
+  if(candidates.length === 0) return null;
+
+  const result = [];
+  const usedNow = new Set(); // 本次抽选中已用（避免同一次抽到重复，即便可重复模式也尽量分散）
+
+  for(let i = 0; i < n; i++){
+    // 只剩一个候选且需要多于1个 → 可重复模式下允许重复补位
+    if(candidates.length === 0){
+      if(state.ruleMode === 'repeat' && state.pool.length > 0){
+        candidates = state.pool; // 可重复模式：循环使用
+      } else {
+        break; // 不重复模式：抽完为止
+      }
+    }
+    // 随机索引
+    const idx = Math.floor(Math.random() * candidates.length);
+    const name = candidates[idx];
+    result.push(name);
+
+    if(state.ruleMode === 'unique'){
+      // 不重复：从候选池移除，并计入全局已抽中
+      candidates.splice(idx, 1);
+      state.drawn.push(name);
+    } else {
+      // 可重复：本次内先不重复取同一个（让十连更丰富），若候选已耗尽则允许重复
+      if(!usedNow.has(name)){
+        usedNow.add(name);
+        candidates.splice(idx, 1);
+      }
+    }
+  }
+  return result;
+}
+
+/* ============================================================
+   3. 渲染卡片（含翻转动画）
+   - names: 名字数组
+   - 每张卡片延迟 stagger 毫秒依次出现并翻转
+   ============================================================ */
+function renderCards(names){
+  cardsLayer.innerHTML = '';
+  const n = names.length;
+
+  // 十连时卡片更小，单抽时更大
+  const compact = n > 1;
+  const holderW = compact ? 118 : 168;
+  const holderH = compact ? 168 : 236;
+
+  names.forEach((name, i) => {
+    // ---- 外层容器：负责出现动画 & 3D 透视 ----
+    const holder = document.createElement('div');
+    holder.className = 'card-holder';
+    holder.style.width  = holderW + 'px';
+    holder.style.height = holderH + 'px';
+    holder.style.animationDelay = (i * 90) + 'ms';
+
+    // 金色微光：随机给部分卡片"传说"光效，增加惊喜感
+    if(Math.random() < 0.22) holder.classList.add('legendary');
+
+    // ---- 内层：负责 3D 翻转 ----
+    const inner = document.createElement('div');
+    inner.className = 'card-inner';
+
+    // 卡背
+    const back = document.createElement('div');
+    back.className = 'card-face card-back';
+
+    // 卡面
+    const front = document.createElement('div');
+    front.className = 'card-face card-front';
+    // 取名字首字作为头像文字
+    const initial = name.trim().charAt(0) || '★';
+    front.innerHTML = `
+      <span class="rank">SUMMONED</span>
+      <span class="corner c1"></span><span class="corner c2"></span>
+      <span class="corner c3"></span><span class="corner c4"></span>
+      <div class="avatar">${escapeHtml(initial)}</div>
+      <div class="name">${escapeHtml(name)}</div>
+      <div class="lv">✦ 星愿降临 ✦</div>
+    `;
+
+    inner.appendChild(back);
+    inner.appendChild(front);
+    holder.appendChild(inner);
+    cardsLayer.appendChild(holder);
+
+    // ---- 延迟后触发翻转 ----
+    setTimeout(() => {
+      holder.classList.add('flipped');
+      burstSparkle(holder); // 翻转瞬间爆一圈金色粒子
+    }, 380 + i * 130);
+  });
+}
+
+/* 简易 HTML 转义，避免名字里的特殊字符破坏页面 */
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[c]);
+}
+
+/* ============================================================
+   4. 抽取按钮主流程
+   ============================================================ */
+async function doDraw(){
+  if(state.drawing) return;              // 动画中禁止重复点击
+
+  if(state.pool.length === 0){
+    flashStatus('请先在左侧输入名单并点击「应用名单」', true);
+    return;
+  }
+
+  const n = state.countMode === 'ten' ? 10 : 1;
+
+  // 不重复模式下提前检查是否还有剩余
+  if(state.ruleMode === 'unique'){
+    const remain = state.pool.filter(x => !state.drawn.includes(x));
+    if(remain.length === 0){
+      flashStatus('本轮名单已全部抽完，请点「重置记录」重新开始', true);
+      return;
+    }
+  }
+
+  const names = pickNames(n);
+  if(!names || names.length === 0){
+    flashStatus('没有可抽取的对象了', true);
+    return;
+  }
+
+  // ---- 播放动画 ----
+  state.drawing = true;
+  btnDraw.disabled = true;
+  renderCards(names);
+
+  const totalAnim = 380 + names.length * 130 + 950;
+  flashStatus('星轨流转，正在召唤……');
+
+  setTimeout(() => {
+    // 动画结束：写入记录
+    names.forEach(name => addRecord(name));
+    state.drawing = false;
+    btnDraw.disabled = false;
+
+    // 状态提示
+    if(state.ruleMode === 'unique'){
+      const left = state.pool.filter(x => !state.drawn.includes(x)).length;
+      flashStatus(`本次抽出 <b>${names.length}</b> 人，剩余可抽 <b>${left}</b> 人`);
+    } else {
+      flashStatus(`本次抽出 <b>${names.length}</b> 人：<b>${names.join('、')}</b>`);
+    }
+  }, totalAnim);
+}
+
+/* 状态文字（err=true 时标红） */
+let statusTimer = null;
+function flashStatus(html, err){
+  statusLine.innerHTML = html;
+  statusLine.style.color = err ? '#e07a7a' : '';
+  clearTimeout(statusTimer);
+  if(err){
+    statusTimer = setTimeout(() => { statusLine.textContent = ''; statusLine.style.color=''; }, 3200);
+  }
+}
+
+/* 每次状态变化（名单数量等）时刷新的默认提示 */
+function updateStatus(){
+  if(state.drawing) return;
+  if(state.pool.length === 0){
+    statusLine.textContent = '尚未录入名单';
+  } else if(state.ruleMode === 'unique'){
+    const left = state.pool.filter(x => !state.drawn.includes(x)).length;
+    statusLine.innerHTML = `名单共 <b>${state.pool.length}</b> 人，本轮剩余 <b>${left}</b> 人`;
+  } else {
+    statusLine.innerHTML = `名单共 <b>${state.pool.length}</b> 人，可重复抽取`;
+  }
+}
+
+/* ============================================================
+   5. 抽取记录
+   ============================================================ */
+function addRecord(name){
+  const now = new Date();
+  const time = now.toTimeString().slice(0,8); // HH:MM:SS
+  state.records.push({ name, time });
+  renderRecords();
+}
+
+function renderRecords(){
+  recordCount.textContent = state.records.length + ' 条';
+  if(state.records.length === 0){
+    recordList.innerHTML = '<div class="record-empty">暂无记录</div>';
+    return;
+  }
+  // 最新的排在最上面
+  recordList.innerHTML = state.records
+    .map((r, i) => `
+      <div class="record-item" style="animation-delay:${Math.min(i*20,200)}ms">
+        <span class="idx">#${String(i+1).padStart(2,'0')}</span>
+        <span class="nm">${escapeHtml(r.name)}</span>
+        <span class="tm">${r.time}</span>
+      </div>
+    `)
+    .reverse()
+    .join('');
+}
+
+/* ============================================================
+   6. 重置 & 清空
+   ============================================================ */
+function resetRound(){
+  state.drawn = [];
+  cardsLayer.innerHTML = `
+    <div class="empty-tip">
+      <span class="big">✦</span>
+      点击下方按钮，开启星愿
+    </div>`;
+  flashStatus('已重置本轮已抽名单（记录仍保留）');
+  updateStatus();
+}
+
+function clearRecords(){
+  if(state.records.length === 0) return;
+  state.records = [];
+  renderRecords();
+  flashStatus('抽取记录已清空');
+}
+
+/* ============================================================
+   7. 金色微光粒子（背景氛围）
+   ============================================================ */
+function spawnSparks(count){
+  for(let i = 0; i < count; i++){
+    const s = document.createElement('div');
+    s.className = 'spark';
+    const size = 2 + Math.random() * 4;
+    s.style.width  = size + 'px';
+    s.style.height = size + 'px';
+    s.style.left   = Math.random() * 100 + 'vw';
+    s.style.bottom = '-20px';
+    s.style.animationDuration = (12 + Math.random() * 16) + 's';
+    s.style.animationDelay    = (Math.random() * 14) + 's';
+    document.body.appendChild(s);
+  }
+}
+spawnSparks(38);
+
+/* 卡片翻转瞬间的粒子爆发 */
+function burstSparkle(holder){
+  const rect = holder.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top  + rect.height / 2;
+  for(let i = 0; i < 12; i++){
+    const p = document.createElement('div');
+    p.className = 'spark';
+    const size = 3 + Math.random() * 4;
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = 40 + Math.random() * 70;
+    p.style.width = p.style.height = size + 'px';
+    p.style.left = cx + 'px';
+    p.style.top  = cy + 'px';
+    p.style.position = 'fixed';
+    p.style.animation = 'none';
+    p.style.transition = 'transform .75s cubic-bezier(.2,.8,.3,1), opacity .75s';
+    p.style.opacity = '1';
+    document.body.appendChild(p);
+    requestAnimationFrame(() => {
+      p.style.transform =
+        `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px) scale(.2)`;
+      p.style.opacity = '0';
+    });
+    setTimeout(() => p.remove(), 820);
+  }
+}
+
+/* ============================================================
+   8. 事件绑定
+   ============================================================ */
+
+/* --- 抽取数量模式切换 --- */
+$('segCount').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if(!btn || state.drawing) return;
+  [...e.currentTarget.children].forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.countMode = btn.dataset.mode;
+});
+
+/* --- 抽取规则切换 --- */
+$('segRule').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if(!btn || state.drawing) return;
+  [...e.currentTarget.children].forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.ruleMode = btn.dataset.rule;
+  updateStatus();
+});
+
+/* --- 主按钮 --- */
+btnDraw.addEventListener('click', doDraw);
+
+/* --- 重置本轮 --- */
+btnReset.addEventListener('click', () => {
+  if(state.drawing) return;
+  resetRound();
+});
+
+/* --- 应用名单 --- */
+$('btnApply').addEventListener('click', () => {
+  if(state.drawing) return;
+  applyPool();
+  flashStatus(`已载入 <b>${state.pool.length}</b> 位待抽选对象`);
+});
+
+/* --- 清空输入 --- */
+$('btnClearInput').addEventListener('click', () => {
+  nameInput.value = '';
+  applyPool();
+});
+
+/* --- 清空记录 --- */
+$('btnClearRecord').addEventListener('click', clearRecords);
+
+/* --- 输入框实时更新左侧人数（只统计，不覆盖已应用名单） --- */
+nameInput.addEventListener('input', () => {
+  const n = parseNames(nameInput.value).length;
+  poolCount.textContent = n + ' 人';
+});
+
+/* --- 空格键 = 开始抽取（未聚焦输入框时生效） --- */
+document.addEventListener('keydown', e => {
+  if(e.code === 'Space' && document.activeElement !== nameInput){
+    e.preventDefault();
+    doDraw();
+  }
+});
+
+/* ============================================================
+   9. 初始化：给个示例名单方便直接体验
+   ============================================================ */
+nameInput.value = [ '蔡文彬','李佳凯','周鑫睿','王宇轩','胡家润','叶雨强','罗佳隆','曾煜皓','周晟恒','顾汶奥',
+ '刘力源','王俊杰','王涛','谭聖霖','张吉龙','刘宥璨','熊昭','卓洺汐','陈俊宏','谢易辰',
+ '令狐少华','黎洪','杨墨涵','陈建心','杜汶骏','周逸晨','程龙','张峻荣','任君林','朱明睿',
+ '李豪杰','韩欣洁','高雨桐','王晗梦','郑舒予','陈雨涵','骆佳欣','詹茹麟','周雅楦','秦芯月',
+ '邓涵怡','刘郑琳','张承义','袁鑫宇','张瑜','丁志娜','朱思妍','陈梦洁','桂丽莲'].join('\n');
+applyPool();
+</script>
+</body>
+</html>
